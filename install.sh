@@ -43,6 +43,11 @@ if curl -fsSL "$RAW/CmuxBridge" -o "$DEST/CmuxBridge"; then
   chmod +x "$DEST/CmuxBridge"
   codesign --force --sign - "$DEST/CmuxBridge" >/dev/null 2>&1 || true
   ok "브리지 설치: $DEST/CmuxBridge"
+
+# 3.5) CPU/GPU 온도 표시용 macmon (Apple Silicon, 선택 — 없어도 브리지는 동작)
+if ! command -v macmon >/dev/null 2>&1 && [ ! -x /opt/homebrew/bin/macmon ]; then
+  command -v brew >/dev/null 2>&1 && brew install macmon >/dev/null 2>&1 && ok "macmon 설치 (온도 표시)" || true
+fi
 else
   err "브리지 다운로드 실패 (네트워크 확인)"
   exit 1
@@ -73,7 +78,7 @@ PY
 fi
 
 # 6) 기존 브리지 정리 후 cmux 안에서 실행
-"$CMUX" workspace list 2>/dev/null | awk '/cmux-bridge/{print $2}' | while read -r w; do
+"$CMUX" workspace list 2>/dev/null | awk '/cmux-bridge/{print $1}' | sed 's/^\*//' | while read -r w; do
   CMUX_QUIET=1 "$CMUX" workspace close --workspace "$w" >/dev/null 2>&1 || true
 done
 pkill -f "CmuxBridge" >/dev/null 2>&1 || true
