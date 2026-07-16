@@ -94,6 +94,23 @@ else
   err "브리지가 아직 안 떴습니다. /tmp/cmux-bridge.log 를 확인하세요."
 fi
 
+# 6.7) 상시전원 내재화: pmset disablesleep 전용 무암호 sudo 규칙.
+# Capsomnia 방식과 동일한 원리 — 고정된 두 명령만 허용, 그 외 sudo 권한 없음.
+if [ ! -f /etc/sudoers.d/cmux-remote ]; then
+  say ""
+  say "  상시전원(뚜껑 닫아도 동작) 설정 — 관리자 암호가 한 번 필요합니다."
+  RULE="$USER ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1, /usr/bin/pmset -a disablesleep 0"
+  TMPR=$(mktemp)
+  printf '%s\n' "$RULE" > "$TMPR"
+  if visudo -c -f "$TMPR" >/dev/null 2>&1 \
+     && sudo install -m 440 -o root -g wheel "$TMPR" /etc/sudoers.d/cmux-remote; then
+    ok "상시전원 규칙 설치 (앱의 ⇪ 버튼으로 원격 제어)"
+  else
+    err "상시전원 규칙 설치 실패 — 앱 ⇪ 버튼은 Capsomnia가 있을 때만 동작합니다"
+  fi
+  rm -f "$TMPR"
+fi
+
 # 7) iPhone 자동 설정 링크 → Mac 클립보드 (Universal Clipboard로 iPhone에 전달)
 LINK="cmuxremote://setup?host=$IP&token=$TOKEN"
 printf '%s' "$LINK" | pbcopy 2>/dev/null || true
