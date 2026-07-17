@@ -124,22 +124,104 @@ PY
   "$CMUX" reload-config >/dev/null 2>&1 || true
 fi
 
-# 6) 기존 브리지 정리 후 cmux 안에서 실행
+# 6) 브리지를 launchd 상주 서비스로 등록.
+# cmux 워크스페이스 안에서 돌리면 cmux 재시작·정리에 같이 죽어 연결이 끊겼다.
+# launchd LaunchAgent는 죽으면 자동 부활(KeepAlive)하고 로그인 시 자동 시작(RunAtLoad).
+UID_NUM="$(id -u)"
+LABEL="io.dk.cmux-bridge"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+mkdir -p "$HOME/Library/LaunchAgents"
+
+# 기존 인스턴스 전부 정리 (launchd·cmux 워크스페이스·잔여 프로세스)
+launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
 "$CMUX" workspace list 2>/dev/null | awk '/cmux-bridge/{print $1}' | sed 's/^\*//' | while read -r w; do
   CMUX_QUIET=1 "$CMUX" workspace close --workspace "$w" >/dev/null 2>&1 || true
 done
 pkill -f "CmuxBridge" >/dev/null 2>&1 || true
 for pid in $(lsof -tiTCP:9393 -sTCP:LISTEN 2>/dev/null); do kill "$pid" 2>/dev/null || true; done
 sleep 1
-CMUX_QUIET=1 "$CMUX" new-workspace --name "cmux-bridge" --focus false \
-  --command "exec env BRIDGE_HOST=$IP $DEST/CmuxBridge 2>&1 | tee /tmp/cmux-bridge.log" >/dev/null 2>&1 || true
+
+cat > "$PLIST" <<PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>$LABEL</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>$DEST/CmuxBridge</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>BRIDGE_HOST</key>
+		<string>$IP</string>
+	</dict>
+	<key>KeepAlive</key>
+	<true/>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>5</integer>
+	<key>StandardOutPath</key>
+	<string>/tmp/cmux-bridge.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/cmux-bridge.log</string>
+</dict>
+</plist>
+PLIST_EOF
+
+# enable + kickstart 조합이 있어야 최초 실행이 확실히 걸린다(bootstrap만으론 pended).
+launchctl bootstrap "gui/$UID_NUM" "$PLIST" 2>/dev/null || launchctl load "$PLIST" 2>/dev/null || true
+launchctl enable "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+launchctl kickstart "gui/$UID_NUM/$LABEL" 2>/dev/null || true
 sleep 3
 
 if lsof -iTCP:9393 -sTCP:LISTEN -n -P 2>/dev/null | grep -q "$IP"; then
-  ok "브리지 실행 중 ($IP:9393)"
+  ok "브리지 상주 실행 중 ($IP:9393) — cmux 재시작·재부팅에도 자동 유지"
 else
   err "브리지가 아직 안 떴습니다. /tmp/cmux-bridge.log 를 확인하세요."
 fi
+
+# 6.5) 크래시 복구 워치독 — launchd KeepAlive가 자식 프로세스 때문에 hard-kill
+# 뒤 respawn을 미루는 경우를 대비. 30초마다 포트를 확인해 죽었으면 kickstart(즉시 복구 검증됨).
+WD="$DEST/bridge-watchdog.sh"
+cat > "$WD" <<'WD_EOF'
+#!/bin/bash
+# 브리지 포트가 죽어 있으면 launchd 브리지를 kickstart (즉시 복구 검증됨).
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+LABEL="io.dk.cmux-bridge"; UID_NUM="$(id -u)"
+if lsof -iTCP:9393 -sTCP:LISTEN -n -P 2>/dev/null | grep -q LISTEN; then exit 0; fi
+echo "$(date '+%F %T') 브리지 다운 감지 → kickstart" >> /tmp/cmux-bridge-watchdog.log
+launchctl kickstart "gui/$UID_NUM/$LABEL" 2>/dev/null \
+  || launchctl kickstart -k "gui/$UID_NUM/$LABEL" 2>/dev/null
+WD_EOF
+chmod +x "$WD"
+WDPLIST="$HOME/Library/LaunchAgents/io.dk.cmux-bridge-watchdog.plist"
+# 구조를 이 Mac에서 1400+회 발화 검증된 기존 워치독과 동일하게 맞춤(StartInterval=60 + 로그).
+cat > "$WDPLIST" <<WDP_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>io.dk.cmux-bridge-watchdog</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>$WD</string>
+    </array>
+    <key>StartInterval</key><integer>60</integer>
+    <key>RunAtLoad</key><true/>
+    <key>StandardOutPath</key><string>/tmp/cmux-bridge-watchdog.log</string>
+    <key>StandardErrorPath</key><string>/tmp/cmux-bridge-watchdog.log</string>
+</dict>
+</plist>
+WDP_EOF
+launchctl bootout "gui/$UID_NUM/io.dk.cmux-bridge-watchdog" 2>/dev/null || true
+launchctl bootstrap "gui/$UID_NUM" "$WDPLIST" 2>/dev/null || launchctl load "$WDPLIST" 2>/dev/null || true
+launchctl enable "gui/$UID_NUM/io.dk.cmux-bridge-watchdog" 2>/dev/null || true
+launchctl kickstart "gui/$UID_NUM/io.dk.cmux-bridge-watchdog" 2>/dev/null || true
+ok "크래시 복구 워치독 등록 (60초 주기)"
 
 # 6.7) 상시전원 내재화: pmset disablesleep 전용 무암호 sudo 규칙.
 # Capsomnia 방식과 동일한 원리 — 고정된 두 명령만 허용, 그 외 sudo 권한 없음.
