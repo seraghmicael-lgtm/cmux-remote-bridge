@@ -23,15 +23,48 @@ if [ ! -x "$CMUX" ]; then
 fi
 ok "cmux 발견"
 
-# 2) Tailscale IP 자동 감지
+# 2) Tailscale IP 자동 감지 (없으면 설치·로그인을 유도하고 대기)
 TS=/Applications/Tailscale.app/Contents/MacOS/Tailscale
-IP=""
-[ -x "$TS" ] && IP="$("$TS" ip -4 2>/dev/null | head -1)"
-[ -z "$IP" ] && IP="$(/usr/sbin/ipconfig getifaddr utun4 2>/dev/null || true)"
-[ -z "$IP" ] && IP="$(ifconfig 2>/dev/null | awk '/inet 100\./{print $2; exit}')"
+ts_ip() {
+  local ip=""
+  [ -x "$TS" ] && ip="$("$TS" ip -4 2>/dev/null | head -1)"
+  [ -z "$ip" ] && ip="$(/usr/sbin/ipconfig getifaddr utun4 2>/dev/null || true)"
+  [ -z "$ip" ] && ip="$(ifconfig 2>/dev/null | awk '/inet 100\./{print $2; exit}')"
+  printf '%s' "$ip"
+}
+IP="$(ts_ip)"
 if [ -z "$IP" ]; then
-  err "Tailscale IP를 못 찾았습니다. Mac에 Tailscale 설치·로그인 후 다시 실행하세요."
-  say "     https://tailscale.com/download"
+  say ""
+  # brew 없는 Mac이 대부분 → Mac App Store를 바로 열어 아이폰과 동일한 "받기" 경험.
+  # (brew가 있으면 무인 설치로 더 빠름)
+  if [ ! -d /Applications/Tailscale.app ]; then
+    if command -v brew >/dev/null 2>&1; then
+      say "  Tailscale 설치 중 (Homebrew)…"
+      brew install --cask tailscale-app >/dev/null 2>&1 || true
+    fi
+    if [ ! -d /Applications/Tailscale.app ]; then
+      say "  Mac App Store에서 Tailscale을 엽니다 — [받기]를 눌러 설치하세요."
+      open "macappstore://apps.apple.com/app/id1475387142" 2>/dev/null \
+        || open "https://apps.apple.com/app/tailscale/id1475387142" 2>/dev/null
+      printf "  설치가 끝나면 엔터를 누르세요… "; read -r _
+    fi
+  fi
+  # 설치됐으면 실행 + 로그인 유도 (아이폰과 같은 계정이어야 서로 보임)
+  open -a Tailscale 2>/dev/null || true
+  say ""
+  say "  Tailscale 창에서 [Log in] → 아이폰과 '같은 계정'으로 로그인하세요."
+  say "  로그인되면 자동으로 이어집니다 (창을 닫지 마세요)…"
+  # IP가 잡힐 때까지 폴링 (최대 5분) — 재실행 불필요.
+  for _ in $(seq 1 60); do
+    sleep 5
+    IP="$(ts_ip)"
+    [ -n "$IP" ] && break
+    printf "."
+  done
+  say ""
+fi
+if [ -z "$IP" ]; then
+  err "Tailscale 로그인을 확인하지 못했습니다. 로그인 후 이 명령을 다시 실행하세요."
   exit 1
 fi
 ok "Tailscale IP: $IP"
