@@ -163,10 +163,13 @@ cat > "$PLIST" <<PLIST_EOF
 	<true/>
 	<key>ThrottleInterval</key>
 	<integer>5</integer>
+	<!-- /tmp는 오래된 파일이 자동 삭제된다. 지워져도 브리지는 열린 fd에 계속 쓰므로
+	     로그가 사라진 줄도 모르게 된다 — 홈 아래로 둔다. 크기 관리는
+	     watchdog.sh의 rotate_bridge_log()가 제자리 절단으로 처리. -->
 	<key>StandardOutPath</key>
-	<string>/tmp/cmux-bridge.log</string>
+	<string>$DEST/bridge.log</string>
 	<key>StandardErrorPath</key>
-	<string>/tmp/cmux-bridge.log</string>
+	<string>$DEST/bridge.log</string>
 </dict>
 </plist>
 PLIST_EOF
@@ -180,48 +183,64 @@ sleep 3
 if lsof -iTCP:9393 -sTCP:LISTEN -n -P 2>/dev/null | grep -q "$IP"; then
   ok "브리지 상주 실행 중 ($IP:9393) — cmux 재시작·재부팅에도 자동 유지"
 else
-  err "브리지가 아직 안 떴습니다. /tmp/cmux-bridge.log 를 확인하세요."
+  err "브리지가 아직 안 떴습니다. $DEST/bridge.log 를 확인하세요."
 fi
 
-# 6.5) 크래시 복구 워치독 — launchd KeepAlive가 자식 프로세스 때문에 hard-kill
-# 뒤 respawn을 미루는 경우를 대비. 30초마다 포트를 확인해 죽었으면 kickstart(즉시 복구 검증됨).
-WD="$DEST/bridge-watchdog.sh"
-cat > "$WD" <<'WD_EOF'
-#!/bin/bash
-# 브리지 포트가 죽어 있으면 launchd 브리지를 kickstart (즉시 복구 검증됨).
-export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-LABEL="io.dk.cmux-bridge"; UID_NUM="$(id -u)"
-if lsof -iTCP:9393 -sTCP:LISTEN -n -P 2>/dev/null | grep -q LISTEN; then exit 0; fi
-echo "$(date '+%F %T') 브리지 다운 감지 → kickstart" >> /tmp/cmux-bridge-watchdog.log
-launchctl kickstart "gui/$UID_NUM/$LABEL" 2>/dev/null \
-  || launchctl kickstart -k "gui/$UID_NUM/$LABEL" 2>/dev/null
-WD_EOF
-chmod +x "$WD"
-WDPLIST="$HOME/Library/LaunchAgents/io.dk.cmux-bridge-watchdog.plist"
-# 구조를 이 Mac에서 1400+회 발화 검증된 기존 워치독과 동일하게 맞춤(StartInterval=60 + 로그).
-cat > "$WDPLIST" <<WDP_EOF
+# 6.5) 자동 복구 워치독.
+# 이전 버전은 9393 포트가 LISTEN인지만 봤는데, 2026-07-26 장애에서 그걸로는
+# 부족한 게 드러났다: 포트는 멀쩡히 열려 있는데 뒤쪽 cmux 자동화 소켓이 죽어
+# 모든 요청이 500으로 떨어졌고, 포트만 보는 감시는 정상이라고 보고했다.
+# 또 StartInterval이 조용히 발화를 멈추는 것도 확인돼(runs=0) KeepAlive 루프로 바꿨다.
+WD="$DEST/watchdog.sh"
+if curl -fsSL "$RAW/watchdog.sh" -o "$WD"; then
+  chmod +x "$WD"
+else
+  err "워치독 내려받기 실패 — 자동 복구 없이 진행합니다"
+  WD=""
+fi
+
+# 구버전 워치독 두 개는 정리한다(포트만 보던 것 + 발화 안 하던 StartInterval 잡)
+for OLD in io.dk.cmux-bridge-watchdog com.dk.cmux-watchdog; do
+  launchctl bootout "gui/$UID_NUM/$OLD" 2>/dev/null || true
+  rm -f "$HOME/Library/LaunchAgents/$OLD.plist"
+done
+rm -f "$DEST/bridge-watchdog.sh"
+
+if [ -n "$WD" ]; then
+  WDLABEL="io.dk.cmux-watchdog"
+  WDPLIST="$HOME/Library/LaunchAgents/$WDLABEL.plist"
+  # StartInterval을 쓰지 않는다 — 이 구조가 조용히 멈추는 걸 실측했다.
+  # KeepAlive로 띄우고 주기는 watchdog.sh --loop 안의 sleep 60이 담당.
+  cat > "$WDPLIST" <<WDP_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key><string>io.dk.cmux-bridge-watchdog</string>
+    <key>Label</key><string>$WDLABEL</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
         <string>$WD</string>
+        <string>--loop</string>
     </array>
-    <key>StartInterval</key><integer>60</integer>
+    <key>KeepAlive</key><true/>
     <key>RunAtLoad</key><true/>
-    <key>StandardOutPath</key><string>/tmp/cmux-bridge-watchdog.log</string>
-    <key>StandardErrorPath</key><string>/tmp/cmux-bridge-watchdog.log</string>
+    <key>StandardOutPath</key><string>/tmp/cmux-watchdog.stdout.log</string>
+    <key>StandardErrorPath</key><string>/tmp/cmux-watchdog.stdout.log</string>
 </dict>
 </plist>
 WDP_EOF
-launchctl bootout "gui/$UID_NUM/io.dk.cmux-bridge-watchdog" 2>/dev/null || true
-launchctl bootstrap "gui/$UID_NUM" "$WDPLIST" 2>/dev/null || launchctl load "$WDPLIST" 2>/dev/null || true
-launchctl enable "gui/$UID_NUM/io.dk.cmux-bridge-watchdog" 2>/dev/null || true
-launchctl kickstart "gui/$UID_NUM/io.dk.cmux-bridge-watchdog" 2>/dev/null || true
-ok "크래시 복구 워치독 등록 (60초 주기)"
+  launchctl bootout "gui/$UID_NUM/$WDLABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$UID_NUM" "$WDPLIST" 2>/dev/null || launchctl load "$WDPLIST" 2>/dev/null || true
+  launchctl enable "gui/$UID_NUM/$WDLABEL" 2>/dev/null || true
+  launchctl kickstart "gui/$UID_NUM/$WDLABEL" 2>/dev/null || true
+  sleep 3
+  if [ -f "$DEST/watchdog.heartbeat" ]; then
+    ok "자동 복구 워치독 등록 (60초 주기 — 소켓·브리지·로그 크기까지 확인)"
+  else
+    err "워치독이 아직 안 돕니다 — launchctl kickstart gui/$UID_NUM/$WDLABEL 로 다시 시도하세요"
+  fi
+fi
 
 # 6.7) 상시전원 내재화: pmset disablesleep 전용 무암호 sudo 규칙.
 # Capsomnia 방식과 동일한 원리 — 고정된 두 명령만 허용, 그 외 sudo 권한 없음.
