@@ -24,20 +24,45 @@ socket_ok()  { "$CMUX" workspace list >/dev/null 2>&1; }
 # 'cmux 미실행' 경로로 새므로, launchd에 등록된 앱 서비스를 1차 기준으로 삼는다.
 app_running(){ launchctl list 2>/dev/null | grep -q "application.com.cmuxterm.app" \
                || pgrep -f "cmux.app/Contents/MacOS/cmux" >/dev/null 2>&1; }
-bridge_ok()  { lsof -iTCP:9393 -sTCP:LISTEN >/dev/null 2>&1; }
+# 'LISTEN이나 accept 못 하는 좀비'(utun 바인딩 장애 등)를 lsof만으론 못 거른다
+# — 실제로 /ping이 200을 주는지 확인한다. 200이면 accept·파싱·서빙 전 구간 정상.
+# 브리지는 전 인터페이스(*:9393)에 바인딩하므로 루프백으로 검증한다(자기 tailscale
+# IP로 치면 헤어핀 SYN_RCVD로 걸림). 연결거부/타임아웃/무응답은 전부 '죽음'으로 본다.
+bridge_ok()  {
+  local code
+  code=$(curl -s -o /dev/null -m 4 -w '%{http_code}' \
+    -H "Authorization: Bearer $(cat "$HOME/.config/cmux-remote/token" 2>/dev/null)" \
+    "http://127.0.0.1:9393/ping" 2>/dev/null)
+  [ "$code" = "200" ]
+}
+# 포트를 쥐고 있는지(LISTEN)만 보는 저수준 체크 — 좀비 감지·정리 판단에만 쓴다.
+bridge_listening() { lsof -iTCP:9393 -sTCP:LISTEN >/dev/null 2>&1; }
 
 ensure_bridge() {
   bridge_ok && return 0
   socket_ok || return 1
+  # 여기 도달 = 브리지가 죽었거나 'LISTEN이나 /ping 무응답' 좀비. 좀비가 9393을 쥔 채로
+  # 그냥 kickstart하면 새 인스턴스가 EADDRINUSE로 죽는다(원래 장애 재현 경로). 그래서
+  # 포트를 쥔 프로세스를 먼저 정리한 뒤 재기동한다.
+  if bridge_listening; then
+    log "브리지 무응답(좀비 LISTEN) — 포트 점유 프로세스 정리"
+    pkill -f "cmux-remote/CmuxBridge" 2>/dev/null; sleep 2
+    pkill -9 -f "cmux-remote/CmuxBridge" 2>/dev/null; sleep 1
+  fi
   log "브리지 재기동"
   # 브리지는 launchd(io.dk.cmux-bridge)가 소유한다. 워크스페이스에서 또 띄우면
   # 같은 9393 포트를 두 프로세스가 다투게 되므로 launchd 쪽을 먼저 쓴다.
   if launchctl print "gui/$(id -u)/io.dk.cmux-bridge" >/dev/null 2>&1; then
     launchctl kickstart -k "gui/$(id -u)/io.dk.cmux-bridge" >/dev/null 2>&1
-    sleep 3
-    bridge_ok && { log "브리지 복구됨(launchd)"; return 0; }
-    log "launchd 재기동 실패 → 워크스페이스 방식으로 폴백"
+    # launchd(KeepAlive)가 담당하는 게 확실하면 워크스페이스 폴백은 하지 않는다 —
+    # 폴백 스폰은 launchd 인스턴스와 9393을 다투다 EADDRINUSE로 죽고 빈 cmux-bridge
+    # 워크스페이스만 남긴다(이중 스폰 사고 원인). 넉넉히 기다렸다 판정하고, 실패해도
+    # launchd가 알아서 재시도하므로 다음 60s 사이클에 맡긴다.
+    for _ in $(seq 1 15); do sleep 1; bridge_ok && { log "브리지 복구됨(launchd)"; return 0; }; done
+    log "브리지 복구 실패(launchd) — 다음 사이클 재시도"
+    return 1
   fi
+  # launchd 서비스가 아예 없을 때만 워크스페이스로 직접 띄운다.
   WS=$("$CMUX" workspace list 2>/dev/null | grep cmux-bridge | grep -oE "workspace:[0-9]+" | head -1)
   if [ -n "$WS" ]; then
     "$CMUX" send --workspace "$WS" "~/.config/cmux-remote/CmuxBridge 2>&1 | tee \"$BRIDGE_LOG\"" >/dev/null 2>&1
@@ -137,7 +162,9 @@ restart_cmux() {
 # 아이폰이 안 붙을 때 제일 먼저 칠 명령. 어느 층이 죽었는지 한눈에 보여준다.
 if [ "$1" = "--status" ]; then
   socket_ok  && echo "cmux 소켓    정상" || echo "cmux 소켓    ✗ 죽음"
-  bridge_ok  && echo "브리지 9393  LISTEN" || echo "브리지 9393  ✗ 안 열림"
+  if bridge_ok; then echo "브리지 9393  정상(응답)"
+  elif bridge_listening; then echo "브리지 9393  ✗ 좀비(LISTEN이나 /ping 무응답)"
+  else echo "브리지 9393  ✗ 안 열림"; fi
   app_running && echo "cmux 앱      실행중" || echo "cmux 앱      ✗ 미실행"
   if [ -f "$BEAT" ]; then
     age=$(( $(date +%s) - $(date -j -f '%F %T' "$(cat "$BEAT")" +%s 2>/dev/null || echo 0) ))
