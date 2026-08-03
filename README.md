@@ -1,23 +1,140 @@
-# cmux-remote bridge
+# cmux 원격 — 아이폰으로 내 맥의 터미널 쓰기
 
-Mac-side bridge for the CmuxPhone iOS app. One-line install (Mac Terminal):
+맥에서 돌아가는 [cmux](https://cmux.com) 세션을 아이폰에서 그대로 보고 조작합니다.
+외출 중에 빌드를 돌리거나, 에이전트가 뭘 하고 있는지 확인하거나, 음성으로 명령을 보낼 수 있습니다.
+
+이 저장소는 **맥에 설치하는 브리지**입니다. 아이폰 앱은 App Store 에서 받습니다.
+
+---
+
+## 설치 (맥에서 한 번)
+
+맥 터미널에 아래 한 줄을 붙여넣고 실행하세요.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/seraghmicael-lgtm/cmux-remote-bridge/main/install.sh | bash
 ```
 
-Requires: [cmux](https://cmux.com) running, [Tailscale](https://tailscale.com/download) logged in (same account as your iPhone).
+끝나면 화면에 **QR 코드**가 뜹니다.
+아이폰 앱에서 **⚙️ 설정 → QR 스캔** 으로 찍으면 연결됩니다. 입력할 것은 없습니다.
 
-After install, the script copies a `cmuxremote://` setup link to your Mac clipboard — on your iPhone, tap **자동 연결** in the app (Universal Clipboard) and you're done. Manual IP/token entry is still available in ⚙️ settings.
+> QR 이 안 찍히면 같은 화면의 **IP 와 토큰**을 설정에 직접 넣어도 됩니다.
 
-## Troubleshooting
+### 미리 준비할 것
 
-If the iPhone can't connect, run this on the Mac — it shows which layer is down:
+| | |
+|---|---|
+| **cmux 앱** | https://cmux.com — 브리지가 여기에 붙습니다 |
+| **Tailscale** | 맥과 아이폰에 **같은 계정**으로 로그인 |
+| macOS | Apple Silicon·Intel 모두 됩니다 |
+
+Tailscale 은 맥과 아이폰을 안전하게 잇는 통로입니다. 이게 있어야 밖에서도 집의 맥에 닿습니다.
+없으면 설치 명령이 알아서 안내해 줍니다.
+
+---
+
+## 업데이트
+
+**자동입니다.** 하루에 한 번 새 버전이 있는지 확인하고, 있으면 알아서 받아 교체합니다.
+받은 파일이 정상 실행 파일인지 확인한 뒤에 바꾸고, 새 버전이 안 뜨면 이전 것으로 되돌립니다.
+
+끄고 싶으면 워치독 환경변수에 `CMUX_AUTO_UPDATE=0` 을 주세요.
+지금 버전은 맥에서 이렇게 확인합니다:
 
 ```bash
-bash ~/.config/cmux-remote/watchdog.sh --status
+curl -s -H "Authorization: Bearer $(cat ~/.config/cmux-remote/token)" \
+  http://127.0.0.1:9393/version
 ```
 
-A watchdog (`io.dk.cmux-watchdog`) checks every 60s and repairs the cmux
-automation socket **without restarting cmux**, so your workspaces survive.
-Logs: `~/.config/cmux-remote/watchdog.log` and `bridge.log`.
+---
+
+## 메뉴 막대 아이콘
+
+설치하면 화면 오른쪽 위에 **동그란 C** 가 생깁니다. 상시전원 상태를 보여줍니다.
+
+| 모양 | 뜻 |
+|---|---|
+| 초록 + 빨간 점 | **켜짐** — 뚜껑을 닫아도 맥이 자지 않습니다 |
+| 회색 | 꺼짐 |
+
+아이콘을 누르면 메뉴가 열립니다 — 켜기/끄기, 정보, 브리지 종료.
+**Caps Lock 을 길게 눌러도** 켜고 끌 수 있습니다.
+
+> **상시전원을 켜면 뚜껑을 닫아도 맥이 깨어 있습니다.** 밖에서 접속하려면 필요하지만,
+> 그만큼 발열과 배터리 소모가 있습니다. 전원을 꽂아두는 것을 권합니다.
+
+---
+
+## 음성 기능 (선택)
+
+말로 명령하고, 결과를 읽어주는 기능입니다. **쓰려면 본인 API 키가 필요합니다.**
+안 쓰면 이 부분은 무시해도 앱은 정상 동작합니다.
+
+앱 **설정 → 음성 제공자** 에서 고릅니다.
+
+| | OpenAI | Fish Audio |
+|---|---|---|
+| 읽어주기 | 유료 | **무료** (S2.1 Pro) |
+| 음성인식 | 유료 | 유료 |
+| 실시간 인식 | **됩니다** (말하는 대로 글자가 차오름) | 안 됩니다 (문장을 마치면 인식) |
+
+키는 **맥에만 저장되고 아이폰에는 남지 않습니다**(권한 600). 화면에는 가려진 형태만 보입니다.
+
+---
+
+## 잘 안 될 때
+
+**폰에서 "연결 실패"**
+
+1. 맥과 아이폰이 **같은 Tailscale 계정**인지 확인
+2. 맥에서 브리지가 사는지 확인:
+   ```bash
+   curl -s http://127.0.0.1:9393/ping
+   ```
+   `unauthorized` 가 나오면 **정상입니다**(인증 뒤에 있는 응답이라 그렇습니다).
+3. 그래도 안 되면 설치 명령을 다시 실행하세요. 설정은 유지됩니다.
+
+**뚜껑을 닫으면 끊긴다** → 메뉴 막대의 C 아이콘이 초록인지 확인하세요. 회색이면 눌러서 켭니다.
+
+**음성이 안 나온다** → 설정에서 키가 "연결됨" 인지 확인. Fish Audio 는 **읽어주기만 무료**이고
+음성인식은 크레딧이 필요합니다(플랫폼 크레딧과 별개 — fish.audio/app/developers).
+
+**로그 보기**
+
+```bash
+tail -f ~/.config/cmux-remote/bridge.log      # 브리지
+tail -f ~/.config/cmux-remote/watchdog.log    # 자동 복구·자동 업데이트
+```
+
+---
+
+## 맥을 여러 대 쓰기
+
+맥마다 위 설치를 한 번씩 하면 각자 토큰이 생깁니다.
+아이폰 앱에서 QR 을 다시 스캔하면 그 맥으로 바뀝니다.
+
+---
+
+## 안전에 관해
+
+- 아이폰과 맥 사이 통신은 **Tailscale(WireGuard) 암호화 구간 안**에서만 오갑니다.
+- 토큰과 API 키는 맥의 `~/.config/cmux-remote/` 에 **권한 600** 으로 저장됩니다.
+- 토큰을 새로 만들려면 그 파일을 지우고 브리지를 재시작합니다:
+  ```bash
+  rm ~/.config/cmux-remote/token
+  launchctl kickstart -k gui/$(id -u)/io.dk.cmux-bridge
+  ```
+  **이러면 폰 연결이 끊기므로 QR 로 다시 스캔해야 합니다.**
+
+---
+
+## 자동 복구
+
+브리지가 죽거나 응답하지 않으면 워치독이 60초 안에 되살립니다.
+cmux 소켓만 끊긴 경우에는 **앱을 재시작하지 않고** 소켓만 복구해 열어둔 워크스페이스를 지킵니다.
+
+상태 확인:
+
+```bash
+~/.config/cmux-remote/watchdog.sh --status
+```

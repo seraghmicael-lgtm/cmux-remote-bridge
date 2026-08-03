@@ -19,6 +19,67 @@ log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 # 죽음으로 오판해 재시작 루프에 빠진다)
 export CMUX_SOCKET_PASSWORD="$(cat "$HOME/.config/cmux-remote/socket-password" 2>/dev/null)"
 socket_ok()  { "$CMUX" workspace list >/dev/null 2>&1; }
+
+# ── 자동 업데이트 ────────────────────────────────────────────────────────────
+# 브리지는 App Store 를 타지 않아 예전엔 사용자가 install.sh 를 다시 실행해야만
+# 갱신됐다. 보안 수정이 나가도 아무도 안 받는 상태가 되므로 여기서 스스로 받는다.
+#
+# 지켜야 할 것:
+#  - 하루 한 번만 확인한다(워치독은 60초마다 도는데 매번 네트워크를 때릴 이유가 없다).
+#  - 받은 파일이 **실행 가능한 Mach-O 인지 검증**하고 나서 교체한다. HTML 에러 페이지나
+#    잘린 파일을 그대로 덮으면 브리지가 영영 안 뜬다(교체는 되돌리기 어렵다).
+#  - 교체 전 현재 바이너리를 백업하고, 새 것이 /ping 에 응답하지 않으면 되돌린다.
+UPDATE_URL="https://raw.githubusercontent.com/seraghmicael-lgtm/cmux-remote-bridge/main"
+UPDATE_STAMP="$HOME/.config/cmux-remote/last-update-check"
+AUTO_UPDATE="${CMUX_AUTO_UPDATE:-1}"    # CMUX_AUTO_UPDATE=0 으로 끌 수 있다
+
+check_update() {
+  [ "$AUTO_UPDATE" = "1" ] || return 0
+  # 하루 한 번
+  if [ -f "$UPDATE_STAMP" ]; then
+    local age=$(( $(date +%s) - $(stat -f %m "$UPDATE_STAMP" 2>/dev/null || echo 0) ))
+    [ "$age" -lt 86400 ] && return 0
+  fi
+  touch "$UPDATE_STAMP"
+
+  local remote local_v tmp
+  remote=$(curl -fsSL -m 15 "$UPDATE_URL/VERSION" 2>/dev/null | tr -d '[:space:]')
+  [ -n "$remote" ] || return 0
+  local_v=$(curl -fsS -m 5 "http://127.0.0.1:9393/version" \
+            -H "Authorization: Bearer $(cat "$HOME/.config/cmux-remote/token" 2>/dev/null)" \
+            2>/dev/null | tr -d '[:space:]')
+  # /version 이 없는 구버전이면 local_v 가 비고, 그때는 무조건 갱신 대상이다.
+  [ "$remote" = "$local_v" ] && return 0
+  log "업데이트 발견: ${local_v:-unknown} → $remote"
+
+  tmp=$(mktemp "${TMPDIR:-/tmp}/CmuxBridge.XXXXXX") || return 0
+  if ! curl -fsSL -m 120 "$UPDATE_URL/CmuxBridge" -o "$tmp"; then
+    log "업데이트 다운로드 실패"; rm -f "$tmp"; return 0
+  fi
+  # 받은 게 진짜 실행 파일인가 — HTML 오류 페이지·잘린 파일을 거른다.
+  if ! file -b "$tmp" | grep -q "Mach-O"; then
+    log "업데이트 거부: Mach-O 가 아님 ($(file -b "$tmp" | head -c 60))"; rm -f "$tmp"; return 0
+  fi
+  if [ "$(stat -f %z "$tmp")" -lt 100000 ]; then
+    log "업데이트 거부: 파일이 너무 작음"; rm -f "$tmp"; return 0
+  fi
+  chmod +x "$tmp"
+
+  cp "$BRIDGE" "$BRIDGE.prev" 2>/dev/null
+  mv "$tmp" "$BRIDGE" || { log "업데이트 교체 실패"; return 0; }
+  launchctl kickstart -k "gui/$(id -u)/io.dk.cmux-bridge" >/dev/null 2>&1
+  # 새 바이너리가 실제로 서비스되는지 확인하고, 아니면 되돌린다.
+  local ok=0
+  for _ in $(seq 1 20); do sleep 1; bridge_ok && { ok=1; break; }; done
+  if [ "$ok" = "1" ]; then
+    log "업데이트 완료 → $remote"
+    rm -f "$BRIDGE.prev"
+  else
+    log "새 브리지가 응답하지 않음 → 이전 버전으로 롤백"
+    [ -f "$BRIDGE.prev" ] && mv "$BRIDGE.prev" "$BRIDGE"
+    launchctl kickstart -k "gui/$(id -u)/io.dk.cmux-bridge" >/dev/null 2>&1
+  fi
+}
 # pgrep/ps가 이 GUI 앱을 못 보는 경우가 있다 (2026-07-26 확인: ps -A·pgrep 목록에는
 # 없는데 ps -p <pid>로는 살아있음). 오판하면 main에서 복구 루틴을 통째로 건너뛰고
 # 'cmux 미실행' 경로로 새므로, launchd에 등록된 앱 서비스를 1차 기준으로 삼는다.
@@ -191,6 +252,7 @@ rotate_bridge_log
 
 if socket_ok; then
   ensure_bridge
+  check_update   # 정상일 때만 갱신 — 장애 복구 중에 바이너리를 바꾸면 원인이 뒤엉킨다
   exit 0
 fi
 # 일시적 오류 배제: 5초 후 재확인
