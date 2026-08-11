@@ -72,7 +72,6 @@ curl -s -H "Authorization: Bearer $(cat ~/.config/cmux-remote/token)" \
 
 앱 **설정 → 음성 제공자** 에서 고릅니다.
 
-| | OpenAI | Fish Audio |
 |---|---|---|
 | 읽어주기 | 유료 | **무료** (S2.1 Pro) |
 | 음성인식 | 유료 | 유료 |
@@ -96,8 +95,6 @@ curl -s -H "Authorization: Bearer $(cat ~/.config/cmux-remote/token)" \
 
 **뚜껑을 닫으면 끊긴다** → 메뉴 막대의 C 아이콘이 초록인지 확인하세요. 회색이면 눌러서 켭니다.
 
-**음성이 안 나온다** → 설정에서 키가 "연결됨" 인지 확인. Fish Audio 는 **읽어주기만 무료**이고
-음성인식은 크레딧이 필요합니다(플랫폼 크레딧과 별개 — fish.audio/app/developers).
 
 **로그 보기**
 
