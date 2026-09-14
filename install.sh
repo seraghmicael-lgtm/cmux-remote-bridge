@@ -184,8 +184,15 @@ cat > "$PLIST" <<PLIST_EOF
 		<key>BRIDGE_HOST</key>
 		<string>$IP</string>
 	</dict>
+	<!-- 정상 종료(0)면 되살리지 않는다. 브리지는 9393 을 다른 인스턴스가 이미 쥐고
+	     있을 때 0 으로 물러나므로, <true/> 로 두면 5초마다 EADDRINUSE 로 죽고 다시
+	     뜨기를 영원히 반복한다(실측 3,556회 · bridge.log 20MB). 진짜 비정상 종료
+	     (≠0)와 크래시는 그대로 부활하므로 상주 보장은 그대로다. -->
 	<key>KeepAlive</key>
-	<true/>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>ThrottleInterval</key>
