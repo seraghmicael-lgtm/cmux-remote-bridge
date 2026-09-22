@@ -20,6 +20,30 @@ log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 export CMUX_SOCKET_PASSWORD="$(cat "$HOME/.config/cmux-remote/socket-password" 2>/dev/null)"
 socket_ok()  { "$CMUX" workspace list >/dev/null 2>&1; }
 
+# ── Tailscale 지킴이 ────────────────────────────────────────────────────────
+# App Store 자동 업데이트가 Tailscale 앱을 재시작시키면, 켜져 있던 것이 stopped
+# 로 돌아온다 — 앱 설정의 restartState=maintainCurrentState 가 업데이트발
+# 재시작에서는 "켜짐"을 보존하지 못한다(실측: 2026-09-17 05:19 앱스토어 백그라운드
+# 업데이트 1.102.3→1.102.4 직후 WantRunning=false. 9/15 에도 같은 증상, 그 전
+# 8/30·9/1 에도 기록 있음).
+# 이게 꺼지면 브리지(테일넷 IP 바인딩)도 폰 원격도 통째로 죽는데, 조용히 죽어서
+# 한참 뒤에야 알아차린다 — 그래서 여기서 되살린다.
+#
+# 손대지 않는 두 경우:
+#  - TS_PAUSE 파일이 있으면(일부러 꺼 두고 싶을 때의 탈출구)
+#  - LoggedOut 이면 — up 해도 브라우저 인증이 필요해 매 분 헛도는 꼴이 된다
+TS_BIN=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+TS_PAUSE="$HOME/.config/cmux-remote/tailscale-paused"
+
+ensure_tailscale() {
+  [ -x "$TS_BIN" ] || return 0
+  [ -f "$TS_PAUSE" ] && return 0
+  "$TS_BIN" status --json 2>/dev/null | grep -q '"BackendState": *"Running"' && return 0
+  "$TS_BIN" debug prefs 2>/dev/null | grep -q '"LoggedOut": *true' && return 0
+  log "Tailscale 이 꺼져 있음 → up"
+  "$TS_BIN" up >/dev/null 2>&1 || log "Tailscale up 실패"
+}
+
 # ── 자동 업데이트 ────────────────────────────────────────────────────────────
 # 브리지는 App Store 를 타지 않아 예전엔 사용자가 install.sh 를 다시 실행해야만
 # 갱신됐다. 보안 수정이 나가도 아무도 안 받는 상태가 되므로 여기서 스스로 받는다.
@@ -249,6 +273,9 @@ fi
 
 date '+%F %T' > "$BEAT"   # 매 실행 갱신 — 워치독 자체가 도는지 확인용
 rotate_bridge_log
+# cmux 상태와 무관하게 매 틱 확인한다 — 아래 socket_ok 분기는 조기 종료하므로
+# 그 안에 두면 cmux 가 멀쩡한 동안 영영 안 돈다.
+ensure_tailscale
 
 if socket_ok; then
   ensure_bridge
