@@ -137,9 +137,11 @@ tail -f ~/.config/cmux-remote/watchdog.log    # 자동 복구·자동 업데이�
 영상은 Tailscale 주소로 직접 연결하며 Relay를 거치지 않습니다. Mac과 iPhone이 모두
 Tailscale에 연결돼 있어야 합니다. 화면을 닫거나 앱이 백그라운드로 가면 연결과 누른 키를 해제합니다.
 
-Apple ScreenCaptureKit과 하드웨어 VideoToolbox를 사용합니다. 4K·240 FPS 설정을 제공하지만
-실제 크기는 화면 비율·원본 해상도, FPS 상한은 Mac·iPhone 디스플레이에 맞춰 제한합니다.
-앱에 설정값과 실제 수신·표시 FPS를 구분해 보여주며, 240 FPS 성능을 보장하지 않습니다.
+Apple ScreenCaptureKit과 하드웨어 VideoToolbox를 사용합니다. 기본 목표는 4K·480 FPS이며
+목표값을 보존하면서 연결 상한은 Mac·iPhone 디스플레이와 브리지의 공통 지원 범위로 정합니다.
+실제 크기는 화면 비율·원본 해상도에 맞춥니다. 목표·연결 상한·실제 수신 및 표시 FPS를 구분하며,
+480 FPS 성능을 보장하지 않습니다. 120Hz 화면에서는 연결 상한도 최대 120 FPS입니다.
+일시적인 연결 오류는 1·2·4초 간격으로 최대 3회 복구하며, 항상 보기 전용으로 다시 연결합니다.
 현재 영상은 HEVC/H.264, 8비트 4:2:0 SDR이며 오디오·HDR은 포함하지 않습니다.
 Apple의 Mac 간 High Performance 화면 공유 프로토콜과는 별도의 구현입니다.
 
