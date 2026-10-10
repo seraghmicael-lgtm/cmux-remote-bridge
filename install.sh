@@ -4,6 +4,62 @@
 # 끝나면 iPhone용 자동 설정 링크(cmuxremote://…)를 클립보드에 복사합니다.
 set -u
 
+# 기존 실행 파일은 다운로드·검증이 모두 끝난 뒤에만 교체한다. curl -o 를
+# 설치 경로에 바로 쓰면 연결이 끊기는 순간 정상 브리지까지 반쪽 파일이 된다.
+# 같은 디렉터리의 임시 파일을 rename 해 교체하므로 실행 중인 inode 도 보존된다.
+install_bridge_binary() {
+  local url="$1" destination="$2" staged
+  staged=$(mktemp "${destination}.download.XXXXXX") || return 1
+  if ! curl -fsSL --connect-timeout 15 --max-time 120 "$url" -o "$staged"; then
+    rm -f "$staged"; return 1
+  fi
+  if ! file -b "$staged" | grep -q 'Mach-O' || [ "$(stat -f %z "$staged")" -lt 100000 ]; then
+    rm -f "$staged"; return 1
+  fi
+  chmod 755 "$staged" || { rm -f "$staged"; return 1; }
+  codesign --force --sign - "$staged" >/dev/null 2>&1 || true
+  mv -f "$staged" "$destination" || { rm -f "$staged"; return 1; }
+}
+
+install_model_watchdog_file() {
+  local url="$1" destination="$2" language="$3" staged
+  staged=$(mktemp "${destination}.download.XXXXXX") || return 1
+  if ! curl -fsSL --connect-timeout 15 --max-time 60 "$url" -o "$staged"; then
+    rm -f "$staged"; return 1
+  fi
+  case "$language" in
+    bash) bash -n "$staged" >/dev/null 2>&1 ;;
+    python) /usr/bin/python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$staged" >/dev/null 2>&1 ;;
+    *) rm -f "$staged"; return 1 ;;
+  esac
+  if [ "$?" -ne 0 ] || [ ! -s "$staged" ]; then rm -f "$staged"; return 1; fi
+  chmod 700 "$staged" || { rm -f "$staged"; return 1; }
+  mv -f "$staged" "$destination" || { rm -f "$staged"; return 1; }
+}
+
+write_model_watchdog_plist() {
+  local destination="$1" watcher="$2" logfile="$3" watcher_xml logfile_xml
+  watcher_xml=$(printf '%s' "$watcher" | sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+  logfile_xml=$(printf '%s' "$logfile" | sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+  cat > "$destination" <<MODEL_PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>io.dk.cmux-model-watchdog</string>
+    <key>ProgramArguments</key>
+    <array><string>/bin/bash</string><string>$watcher_xml</string><string>--loop</string></array>
+    <key>KeepAlive</key><true/>
+    <key>RunAtLoad</key><true/>
+    <key>ThrottleInterval</key><integer>30</integer>
+    <key>StandardOutPath</key><string>$logfile_xml</string>
+    <key>StandardErrorPath</key><string>$logfile_xml</string>
+</dict>
+</plist>
+MODEL_PLIST_EOF
+  /usr/bin/plutil -lint "$destination" >/dev/null
+}
+
 # 본문 전체를 함수로 감싼다 — curl | bash 는 스크립트를 스트리밍하므로, 중간에 네트워크가
 # 끊기면 받은 데까지만 실행된다. 함수는 닫는 괄호까지 다 받아야 실행되므로 반쪽 실행이 없다.
 main() {
@@ -108,9 +164,7 @@ step "연결 프로그램(브리지) 설치"
 # 3) 브리지 바이너리 다운로드
 DEST="$HOME/.config/cmux-remote"
 mkdir -p "$DEST"
-if curl -fsSL "$RAW/CmuxBridge" -o "$DEST/CmuxBridge"; then
-  chmod +x "$DEST/CmuxBridge"
-  codesign --force --sign - "$DEST/CmuxBridge" >/dev/null 2>&1 || true
+if install_bridge_binary "$RAW/CmuxBridge" "$DEST/CmuxBridge"; then
   ok "브리지 설치: $DEST/CmuxBridge"
 
 # 3.5) CPU/GPU 온도 표시용 macmon (Apple Silicon, 선택 — 없어도 브리지는 동작)
@@ -121,7 +175,7 @@ if ! command -v macmon >/dev/null 2>&1 && [ ! -x /opt/homebrew/bin/macmon ]; the
   fi
 fi
 else
-  err "브리지 다운로드 실패 (네트워크 확인)"
+  err "브리지 다운로드 또는 검증 실패 (기존 설치는 유지됩니다)"
   exit 1
 fi
 
@@ -265,6 +319,8 @@ if [ -n "$WD" ]; then
 </dict>
 </plist>
 WDP_EOF
+  # XML comments cannot contain double hyphens, including a command-line loop flag.
+  /usr/bin/plutil -lint "$WDPLIST" >/dev/null || { err "워치독 설정 형식 오류"; return 1; }
   launchctl bootout "gui/$UID_NUM/$WDLABEL" 2>/dev/null || true
   launchctl bootstrap "gui/$UID_NUM" "$WDPLIST" 2>/dev/null || launchctl load "$WDPLIST" 2>/dev/null || true
   launchctl enable "gui/$UID_NUM/$WDLABEL" 2>/dev/null || true
@@ -275,6 +331,24 @@ WDP_EOF
   else
     err "워치독이 아직 안 돕니다 — launchctl kickstart gui/$UID_NUM/$WDLABEL 로 다시 시도하세요"
   fi
+fi
+
+# Model refresh has a separate service: it never runs the cmux repair or binary updater.
+MODEL_WD="$DEST/model-watchdog.sh"
+MODEL_HELPER="$DEST/model-catalog.py"
+MODEL_LABEL="io.dk.cmux-model-watchdog"
+MODEL_PLIST="$HOME/Library/LaunchAgents/$MODEL_LABEL.plist"
+if install_model_watchdog_file "$RAW/model-watchdog.sh" "$MODEL_WD" bash \
+  && install_model_watchdog_file "$RAW/model-catalog.py" "$MODEL_HELPER" python \
+  && write_model_watchdog_plist "$MODEL_PLIST" "$MODEL_WD" "$DEST/model-watchdog.stdout.log"; then
+  launchctl bootout "gui/$UID_NUM/$MODEL_LABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$UID_NUM" "$MODEL_PLIST" 2>/dev/null \
+    && launchctl enable "gui/$UID_NUM/$MODEL_LABEL" 2>/dev/null \
+    && launchctl kickstart "gui/$UID_NUM/$MODEL_LABEL" 2>/dev/null \
+    && ok "모델 목록 자동 갱신 등록 (5분 주기, 앱·CLI 자동 업그레이드 없음)" \
+    || err "모델 목록 자동 갱신 등록 실패"
+else
+  err "모델 목록 자동 갱신 설치 실패 — 기존 모델 목록은 유지됩니다"
 fi
 
 step "상시전원 (뚜껑 닫아도 연결 유지 — 관리자 암호 1회)"
@@ -325,4 +399,5 @@ say ""
 
 }
 
-main "$@"
+# 회귀 검사는 다운로드 함수만 로드하며 설치·실서비스 조작은 하지 않는다.
+if [ "${CMUX_INSTALL_LIB:-0}" != "1" ]; then main "$@"; fi

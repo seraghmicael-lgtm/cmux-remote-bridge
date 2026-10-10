@@ -139,3 +139,24 @@ cmux 소켓만 끊긴 경우에는 **앱을 재시작하지 않고** 소켓만 �
 ```bash
 ~/.config/cmux-remote/watchdog.sh --status
 ```
+
+## 모델 목록 자동 갱신
+
+`io.dk.cmux-model-watchdog`는 복구 워치독과 별도로 실행됩니다. 각 Mac의
+Claude·Codex가 제공하는 모델 목록을 5분 간격으로 다시 확인합니다. 새로고침 요청은
+다음 60초 점검에서 처리하며, 실패하면 60초 뒤 재시도합니다. CLI 버전이 같아도
+목록을 다시 조회하므로 계정에 새 모델이 열리는 경우도 반영할 수 있습니다.
+
+모델 감시기는 실행 중인 cmux·에이전트에 입력을 보내거나 재시작하지 않습니다.
+브리지나 CLI 바이너리를 자동 업그레이드하지 않으며, 현재 선택한 모델도 바꾸지 않습니다.
+조회 실패 시 마지막으로 확인한 목록과 실패 상태를 함께 유지합니다.
+
+```bash
+~/.config/cmux-remote/model-watchdog.sh --status
+tail -f ~/.config/cmux-remote/model-watchdog.log
+```
+
+모델 캐시는 `~/.config/cmux-remote/agent-models.json`에 사용자 전용 권한으로 저장됩니다.
+기존 설치에 모델 감시기만 추가할 때는 전체 설치 스크립트를 다시 실행하지 말고,
+`model-watchdog.sh`·`model-catalog.py`와 별도 LaunchAgent만 반영해야 합니다.
+전체 설치는 기존 브리지·복구 서비스 설정도 다시 구성합니다.

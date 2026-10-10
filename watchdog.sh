@@ -17,7 +17,10 @@ log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
 # 소켓 비밀번호: cmux가 password 모드일 때 필수 (없으면 auth_required를
 # 죽음으로 오판해 재시작 루프에 빠진다)
-export CMUX_SOCKET_PASSWORD="$(cat "$HOME/.config/cmux-remote/socket-password" 2>/dev/null)"
+export CMUX_SOCKET_PASSWORD=""
+if [ -z "${WATCHDOG_LIB:-}" ]; then
+  export CMUX_SOCKET_PASSWORD="$(cat "$HOME/.config/cmux-remote/socket-password" 2>/dev/null)"
+fi
 socket_ok()  { "$CMUX" workspace list >/dev/null 2>&1; }
 
 # ── Tailscale 지킴이 ────────────────────────────────────────────────────────
