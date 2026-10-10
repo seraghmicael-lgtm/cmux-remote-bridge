@@ -8,6 +8,7 @@
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 CMUX=/Applications/cmux.app/Contents/Resources/bin/cmux
 BRIDGE="$HOME/.config/cmux-remote/CmuxBridge"
+BRIDGE_TOKEN_FILE="$HOME/.config/cmux-remote/token"
 # 로그·상태는 /tmp 밖에 둔다: /tmp는 오래된 파일을 자동 삭제해서
 # "장애가 있었는데 기록이 없다" 상태를 만든다 (2026-07-26 사고 때 실제로 겪음).
 LOG="$HOME/.config/cmux-remote/watchdog.log"
@@ -73,13 +74,13 @@ check_update() {
   remote=$(curl -fsSL -m 15 "$UPDATE_URL/VERSION" 2>/dev/null | tr -d '[:space:]')
   [ -n "$remote" ] || return 0
   local_v=$(curl -fsS -m 5 "http://127.0.0.1:9393/version" \
-            -H "Authorization: Bearer $(cat "$HOME/.config/cmux-remote/token" 2>/dev/null)" \
+            -H "Authorization: Bearer $(cat "$BRIDGE_TOKEN_FILE" 2>/dev/null)" \
             2>/dev/null | tr -d '[:space:]')
   # /version 이 없는 구버전이면 local_v 가 비고, 그때는 무조건 갱신 대상이다.
   [ "$remote" = "$local_v" ] && return 0
   log "업데이트 발견: ${local_v:-unknown} → $remote"
 
-  tmp=$(mktemp "${TMPDIR:-/tmp}/CmuxBridge.XXXXXX") || return 0
+  tmp=$(mktemp "${BRIDGE}.download.XXXXXX") || return 0
   if ! curl -fsSL -m 120 "$UPDATE_URL/CmuxBridge" -o "$tmp"; then
     log "업데이트 다운로드 실패"; rm -f "$tmp"; return 0
   fi
@@ -90,10 +91,14 @@ check_update() {
   if [ "$(stat -f %z "$tmp")" -lt 100000 ]; then
     log "업데이트 거부: 파일이 너무 작음"; rm -f "$tmp"; return 0
   fi
-  chmod +x "$tmp"
+  chmod 755 "$tmp" || { rm -f "$tmp"; return 0; }
+  if ! codesign --verify --strict --all-architectures -R '=identifier "io.dk.cmux-bridge" and anchor apple generic and certificate leaf[subject.OU] = "HQ94KCSV26"' "$tmp" >/dev/null 2>&1; then
+    log "업데이트 거부: 서명 검증 실패"; rm -f "$tmp"; return 0
+  fi
 
-  cp "$BRIDGE" "$BRIDGE.prev" 2>/dev/null
-  mv "$tmp" "$BRIDGE" || { log "업데이트 교체 실패"; return 0; }
+  cp "$BRIDGE" "$BRIDGE.prev" 2>/dev/null \
+    || { log "업데이트 백업 실패"; rm -f "$tmp"; return 0; }
+  mv -f "$tmp" "$BRIDGE" || { log "업데이트 교체 실패"; rm -f "$tmp"; return 0; }
   launchctl kickstart -k "gui/$(id -u)/io.dk.cmux-bridge" >/dev/null 2>&1
   # 새 바이너리가 실제로 서비스되는지 확인하고, 아니면 되돌린다.
   local ok=0
@@ -119,7 +124,7 @@ app_running(){ launchctl list 2>/dev/null | grep -q "application.com.cmuxterm.ap
 bridge_ok()  {
   local code
   code=$(curl -s -o /dev/null -m 4 -w '%{http_code}' \
-    -H "Authorization: Bearer $(cat "$HOME/.config/cmux-remote/token" 2>/dev/null)" \
+    -H "Authorization: Bearer $(cat "$BRIDGE_TOKEN_FILE" 2>/dev/null)" \
     "http://127.0.0.1:9393/ping" 2>/dev/null)
   [ "$code" = "200" ]
 }

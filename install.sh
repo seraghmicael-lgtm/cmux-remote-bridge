@@ -17,7 +17,11 @@ install_bridge_binary() {
     rm -f "$staged"; return 1
   fi
   chmod 755 "$staged" || { rm -f "$staged"; return 1; }
-  codesign --force --sign - "$staged" >/dev/null 2>&1 || true
+  # Preserve the release identity so macOS can recognize later permission updates.
+  if ! codesign --verify --strict --all-architectures -R '=identifier "io.dk.cmux-bridge" and anchor apple generic and certificate leaf[subject.OU] = "HQ94KCSV26"' "$staged" >/dev/null 2>&1; then
+    printf '%s\n' '브리지 서명 검증 실패. 기존 설치를 유지합니다.' >&2
+    rm -f "$staged"; return 1
+  fi
   mv -f "$staged" "$destination" || { rm -f "$staged"; return 1; }
 }
 
