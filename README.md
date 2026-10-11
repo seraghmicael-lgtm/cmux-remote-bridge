@@ -22,11 +22,11 @@ Tailscale 은 맥과 아이폰을 안전하게 잇는 통로입니다. 이게 �
 
 ## DMG로 설치 (macOS 13 이상)
 
-[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 **CmuxBridge-2.40.5.dmg**를 받습니다.
+[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 **CmuxBridge-2.40.10.dmg**를 받습니다.
 DMG 안의 **Cmux Bridge 설치.app**을 열고 **Bridge 설치**를 누릅니다. Apple Silicon과 Intel을 모두 지원합니다.
 cmux 앱과 Tailscale은 먼저 설치해 실행해 주세요. 기존 연결 토큰은 보존합니다.
 
-**2.40.5 정식 배포는 Developer ID 서명과 Apple 공증, Gatekeeper 검증을 통과한 파일만 게시합니다.**
+**2.40.10 정식 배포는 Developer ID 서명과 Apple 공증, Gatekeeper 검증을 통과한 파일만 게시합니다.**
 DMG에 공증 티켓을 첨부하며, 설치 후 복사되는 Bridge 실행 파일도 별도로 공증합니다.
 Bridge를 처음 실행할 때 macOS의 온라인 확인이 필요할 수 있습니다.
 새 Mac에서 격리 다운로드 후 설치하는 전체 과정은 아직 검증하지 않았습니다.
