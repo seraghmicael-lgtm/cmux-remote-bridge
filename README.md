@@ -22,14 +22,14 @@ Tailscale 은 맥과 아이폰을 안전하게 잇는 통로입니다. 이게 �
 
 ## DMG로 설치 (macOS 13 이상)
 
-[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 **CmuxBridge-2.40.4.dmg**를 받습니다.
+[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 **CmuxBridge-2.40.5.dmg**를 받습니다.
 DMG 안의 **Cmux Bridge 설치.app**을 열고 **Bridge 설치**를 누릅니다. Apple Silicon과 Intel을 모두 지원합니다.
 cmux 앱과 Tailscale은 먼저 설치해 실행해 주세요. 기존 연결 토큰은 보존합니다.
 
-**Apple Development 서명이며 Developer ID 공증은 받지 않았습니다.** macOS가 실행을 차단할 수 있습니다.
-신뢰하는 파일임을 확인한 경우에만 [Apple의 앱 열기 안내](https://support.apple.com/ko-kr/102445)를 따르세요.
-설치 앱을 허용해도 복사된 Bridge 실행은 별도로 차단될 수 있습니다. 이 경우 설치기는 오류를 표시하고
-기존 버전 복구를 시도합니다. 새 Mac에서 격리 다운로드 후 설치하는 전체 과정은 아직 검증하지 않았습니다.
+**2.40.5 정식 배포는 Developer ID 서명과 Apple 공증, Gatekeeper 검증을 통과한 파일만 게시합니다.**
+DMG에 공증 티켓을 첨부하며, 설치 후 복사되는 Bridge 실행 파일도 별도로 공증합니다.
+Bridge를 처음 실행할 때 macOS의 온라인 확인이 필요할 수 있습니다.
+새 Mac에서 격리 다운로드 후 설치하는 전체 과정은 아직 검증하지 않았습니다.
 
 ## 터미널로 설치 (맥에서 한 번)
 
@@ -58,9 +58,9 @@ curl -fsSL https://raw.githubusercontent.com/seraghmicael-lgtm/cmux-remote-bridg
 기존 복구 워치독의 업데이트 검증도 적용하려면 `watchdog.sh` 자체를 갱신해야 합니다.
 브리지 바이너리 자동 업데이트만으로 과거 워치독 스크립트까지 바뀌지는 않습니다.
 
-현재 서명은 **Apple Development 개발용 서명**입니다. Developer ID 서명·공증을 받은
-일반 배포 패키지는 아닙니다. 예전 ad-hoc 서명에서 처음 전환할 때는 macOS가 화면 기록·
-손쉬운 사용 권한을 다시 요구할 수 있습니다. 권한은 사용자가 시스템 설정에서 허용해야 합니다.
+정식 배포에는 **Developer ID Application 서명**을 사용합니다. 이전 서명에서 전환할 때는
+macOS가 화면 기록·손쉬운 사용 권한을 다시 요구할 수 있습니다.
+권한은 사용자가 시스템 설정에서 허용해야 합니다.
 기존 실행 경로와 LaunchAgent는 유지합니다.
 
 끄고 싶으면 워치독 환경변수에 `CMUX_AUTO_UPDATE=0` 을 주세요.
