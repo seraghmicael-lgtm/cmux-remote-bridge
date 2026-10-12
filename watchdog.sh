@@ -48,69 +48,33 @@ ensure_tailscale() {
   "$TS_BIN" up >/dev/null 2>&1 || log "Tailscale up 실패"
 }
 
-# ── 자동 업데이트 ────────────────────────────────────────────────────────────
-# 브리지는 App Store 를 타지 않아 예전엔 사용자가 install.sh 를 다시 실행해야만
-# 갱신됐다. 보안 수정이 나가도 아무도 안 받는 상태가 되므로 여기서 스스로 받는다.
-#
-# 지켜야 할 것:
-#  - 하루 한 번만 확인한다(워치독은 60초마다 도는데 매번 네트워크를 때릴 이유가 없다).
-#  - 받은 파일이 **실행 가능한 Mach-O 인지 검증**하고 나서 교체한다. HTML 에러 페이지나
-#    잘린 파일을 그대로 덮으면 브리지가 영영 안 뜬다(교체는 되돌리기 어렵다).
-#  - 교체 전 현재 바이너리를 백업하고, 새 것이 /ping 에 응답하지 않으면 되돌린다.
-UPDATE_URL="https://raw.githubusercontent.com/seraghmicael-lgtm/cmux-remote-bridge/main"
-UPDATE_STAMP="$HOME/.config/cmux-remote/last-update-check"
-AUTO_UPDATE="${CMUX_AUTO_UPDATE:-1}"    # CMUX_AUTO_UPDATE=0 으로 끌 수 있다
+# CMUX_BRIDGE_UPDATE_PROTOCOL=2
+# Binary updates belong to Bridge's signed, notarized updater. The watchdog
+# only recovers services; it must not race an update or its rollback.
+UPDATE_TRANSACTION="$HOME/.config/cmux-remote/bridge-update-transaction"
+UPDATE_PROTOCOL="$HOME/.config/cmux-remote/watchdog.update-protocol"
 
-check_update() {
-  [ "$AUTO_UPDATE" = "1" ] || return 0
-  # 하루 한 번
-  if [ -f "$UPDATE_STAMP" ]; then
-    local age=$(( $(date +%s) - $(stat -f %m "$UPDATE_STAMP" 2>/dev/null || echo 0) ))
-    [ "$age" -lt 86400 ] && return 0
-  fi
-  touch "$UPDATE_STAMP"
+check_update() { return 0; }
 
-  local remote local_v tmp
-  remote=$(curl -fsSL -m 15 "$UPDATE_URL/VERSION" 2>/dev/null | tr -d '[:space:]')
-  [ -n "$remote" ] || return 0
-  local_v=$(curl -fsS -m 5 "http://127.0.0.1:9393/version" \
-            -H "Authorization: Bearer $(cat "$BRIDGE_TOKEN_FILE" 2>/dev/null)" \
-            2>/dev/null | tr -d '[:space:]')
-  # /version 이 없는 구버전이면 local_v 가 비고, 그때는 무조건 갱신 대상이다.
-  [ "$remote" = "$local_v" ] && return 0
-  log "업데이트 발견: ${local_v:-unknown} → $remote"
+publish_update_protocol() {
+  local temporary
+  umask 077
+  temporary=$(mktemp "${UPDATE_PROTOCOL}.XXXXXX") || return 1
+  printf '2\n%s\n' "$$" > "$temporary" || { rm -f "$temporary"; return 1; }
+  mv -f "$temporary" "$UPDATE_PROTOCOL"
+}
 
-  tmp=$(mktemp "${BRIDGE}.download.XXXXXX") || return 0
-  if ! curl -fsSL -m 120 "$UPDATE_URL/CmuxBridge" -o "$tmp"; then
-    log "업데이트 다운로드 실패"; rm -f "$tmp"; return 0
-  fi
-  # 받은 게 진짜 실행 파일인가 — HTML 오류 페이지·잘린 파일을 거른다.
-  if ! file -b "$tmp" | grep -q "Mach-O"; then
-    log "업데이트 거부: Mach-O 가 아님 ($(file -b "$tmp" | head -c 60))"; rm -f "$tmp"; return 0
-  fi
-  if [ "$(stat -f %z "$tmp")" -lt 100000 ]; then
-    log "업데이트 거부: 파일이 너무 작음"; rm -f "$tmp"; return 0
-  fi
-  chmod 755 "$tmp" || { rm -f "$tmp"; return 0; }
-  if ! codesign --verify --strict --all-architectures -R '=identifier "io.dk.cmux-bridge" and anchor apple generic and certificate leaf[subject.OU] = "HQ94KCSV26"' "$tmp" >/dev/null 2>&1; then
-    log "업데이트 거부: 서명 검증 실패"; rm -f "$tmp"; return 0
-  fi
-
-  cp "$BRIDGE" "$BRIDGE.prev" 2>/dev/null \
-    || { log "업데이트 백업 실패"; rm -f "$tmp"; return 0; }
-  mv -f "$tmp" "$BRIDGE" || { log "업데이트 교체 실패"; rm -f "$tmp"; return 0; }
-  launchctl kickstart -k "gui/$(id -u)/io.dk.cmux-bridge" >/dev/null 2>&1
-  # 새 바이너리가 실제로 서비스되는지 확인하고, 아니면 되돌린다.
-  local ok=0
-  for _ in $(seq 1 20); do sleep 1; bridge_ok && { ok=1; break; }; done
-  if [ "$ok" = "1" ]; then
-    log "업데이트 완료 → $remote"
-    rm -f "$BRIDGE.prev"
-  else
-    log "새 브리지가 응답하지 않음 → 이전 버전으로 롤백"
-    [ -f "$BRIDGE.prev" ] && mv "$BRIDGE.prev" "$BRIDGE"
-    launchctl kickstart -k "gui/$(id -u)/io.dk.cmux-bridge" >/dev/null 2>&1
-  fi
+acquire_update_transaction() {
+  # Never guess that an orphan lock is safe to remove. Maintenance can inspect it.
+  (umask 077; mkdir "$UPDATE_TRANSACTION") 2>/dev/null || return 1
+  printf '%s' "$$" > "$UPDATE_TRANSACTION/owner" || { rmdir "$UPDATE_TRANSACTION"; return 1; }
+  trap 'release_update_transaction' EXIT
+}
+release_update_transaction() {
+  [ -d "$UPDATE_TRANSACTION" ] && [ ! -L "$UPDATE_TRANSACTION" ] || return 0
+  [ "$(cat "$UPDATE_TRANSACTION/owner" 2>/dev/null)" = "$$" ] || return 0
+  rm -f "$UPDATE_TRANSACTION/owner"
+  rmdir "$UPDATE_TRANSACTION" 2>/dev/null || true
 }
 # pgrep/ps가 이 GUI 앱을 못 보는 경우가 있다 (2026-07-26 확인: ps -A·pgrep 목록에는
 # 없는데 ps -p <pid>로는 살아있음). 오판하면 main에서 복구 루틴을 통째로 건너뛰고
@@ -277,7 +241,10 @@ fi
 # launchd의 StartInterval이 이 맥에서 발화하지 않는다 (2026-07-26 확인:
 # runs=0인 채 5분 경과, RunAtLoad조차 안 뜸). 그래서 브리지와 같은
 # KeepAlive + 자체 루프 방식으로 돈다 — 그쪽은 멀쩡히 살아있는 게 검증됨.
-[ "$1" = "--loop" ] && { while :; do bash "$0"; sleep 60; done; }
+[ "$1" = "--loop" ] && { publish_update_protocol || exit 1; while :; do bash "$0"; sleep 60; done; }
+
+# Hold the shared lock throughout this tick, including delayed service recovery.
+acquire_update_transaction || exit 0
 
 date '+%F %T' > "$BEAT"   # 매 실행 갱신 — 워치독 자체가 도는지 확인용
 rotate_bridge_log
