@@ -9,6 +9,7 @@ export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 CMUX=/Applications/cmux.app/Contents/Resources/bin/cmux
 BRIDGE="$HOME/.config/cmux-remote/CmuxBridge"
 BRIDGE_TOKEN_FILE="$HOME/.config/cmux-remote/token"
+BRIDGE_AGENT="$HOME/Library/LaunchAgents/io.dk.cmux-bridge.plist"
 # 로그·상태는 /tmp 밖에 둔다: /tmp는 오래된 파일을 자동 삭제해서
 # "장애가 있었는데 기록이 없다" 상태를 만든다 (2026-07-26 사고 때 실제로 겪음).
 LOG="$HOME/.config/cmux-remote/watchdog.log"
@@ -95,7 +96,29 @@ bridge_ok()  {
 # 포트를 쥐고 있는지(LISTEN)만 보는 저수준 체크 — 좀비 감지·정리 판단에만 쓴다.
 bridge_listening() { lsof -iTCP:9393 -sTCP:LISTEN >/dev/null 2>&1; }
 
+ensure_bridge_registration() {
+  local domain="gui/$(id -u)" label="io.dk.cmux-bridge"
+  launchctl print "$domain/$label" >/dev/null 2>&1 && return 0
+  # Respect an explicit disabled service and never replace it with a terminal job.
+  if launchctl print-disabled "$domain" 2>/dev/null | grep -q '"io.dk.cmux-bridge" => true'; then
+    log "브리지 자동 실행이 비활성화되어 있음"
+    return 1
+  fi
+  [ -f "$BRIDGE_AGENT" ] && [ ! -L "$BRIDGE_AGENT" ] \
+    && [ "$(stat -f %u "$BRIDGE_AGENT" 2>/dev/null)" = "$(id -u)" ] \
+    && plutil -lint -s "$BRIDGE_AGENT" >/dev/null 2>&1 \
+    && [ "$(plutil -extract Label raw -o - "$BRIDGE_AGENT" 2>/dev/null)" = "$label" ] \
+    && [ "$(plutil -extract ProgramArguments.0 raw -o - "$BRIDGE_AGENT" 2>/dev/null)" = "$BRIDGE" ] \
+    || { log "브리지 로그인 서비스 파일을 확인하지 못함 — 설치 복구 필요"; return 1; }
+  launchctl bootstrap "$domain" "$BRIDGE_AGENT" >/dev/null 2>&1 || true
+  # A launchctl error can still register a service. Verify before starting it.
+  launchctl print "$domain/$label" >/dev/null 2>&1 \
+    || { log "브리지 자동 실행 등록 복구 실패"; return 1; }
+  log "브리지 자동 실행 등록 복구됨"
+}
+
 ensure_bridge() {
+  ensure_bridge_registration || return 1
   bridge_ok && return 0
   socket_ok || return 1
   # 여기 도달 = 브리지가 죽었거나 'LISTEN이나 /ping 무응답' 좀비. 좀비가 9393을 쥔 채로
@@ -119,17 +142,8 @@ ensure_bridge() {
     log "브리지 복구 실패(launchd) — 다음 사이클 재시도"
     return 1
   fi
-  # launchd 서비스가 아예 없을 때만 워크스페이스로 직접 띄운다.
-  WS=$("$CMUX" workspace list 2>/dev/null | grep cmux-bridge | grep -oE "workspace:[0-9]+" | head -1)
-  if [ -n "$WS" ]; then
-    "$CMUX" send --workspace "$WS" "~/.config/cmux-remote/CmuxBridge 2>&1 | tee \"$BRIDGE_LOG\"" >/dev/null 2>&1
-    "$CMUX" send-key --workspace "$WS" enter >/dev/null 2>&1
-  else
-    "$CMUX" new-workspace --name cmux-bridge --focus false \
-      --command "~/.config/cmux-remote/CmuxBridge 2>&1 | tee \"$BRIDGE_LOG\"" >/dev/null 2>&1
-  fi
-  sleep 3
-  bridge_ok && log "브리지 복구됨" || log "브리지 복구 실패"
+  log "브리지 로그인 서비스가 사라짐 — 다음 사이클에서 등록 복구"
+  return 1
 }
 
 # 앱은 살아있는데 자동화 소켓만 죽은 경우의 가벼운 복구.
