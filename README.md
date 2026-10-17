@@ -22,7 +22,7 @@ Tailscale 은 맥과 아이폰을 안전하게 잇는 통로입니다. 이게 �
 
 ## DMG로 설치 (macOS 14 이상)
 
-[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 **CmuxBridge-2.40.24.dmg**를 받습니다.
+[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 **CmuxBridge-2.40.24-r2.dmg**를 받습니다.
 DMG 안의 **Cmux Bridge 설치.app**을 열고 **Bridge 설치**를 누릅니다. Apple Silicon과 Intel을 모두 지원합니다.
 설치 앱에서 cmux·Tailscale 설치 및 연결 상태를 확인하고, 필요한 공식 다운로드나 앱 열기로 이어집니다.
 현재 cmux는 macOS 14 이상이 필요합니다. Tailscale 로그인·VPN 승인과 macOS 권한 승인은 사용자가 진행해야 합니다.
@@ -46,8 +46,9 @@ Bridge를 처음 실행할 때 macOS의 온라인 확인이 필요할 수 있습
 cmux 인증과 연결을 실제로 확인한 뒤 Bridge와 복구 워치독을 등록합니다.
 안전하게 병합할 수 있는 중복 `automation` 항목은 정리하며, 수정 전 원본 설정을
 같은 폴더의 고유 `.cmux-bridge-backup-*.bak` 파일에 사용자 전용 권한으로 보존합니다.
-서로 다른 기존 암호나 충돌하는 설정, 암호 모드인데 읽을 수 있는 암호가 없는 경우에는
-임의로 덮어쓰지 않고 설치를 중단해 필요한 조치를 안내합니다.
+설치기 r2는 오래된 Bridge 암호 사본과 셸 환경의 차이를 실제 cmux 소켓 인증으로 확인해 자동 동기화합니다.
+새 설치에 암호가 없으면 Mac마다 독립적인 키를 생성합니다. 기존 cmux 암호는 덮어쓰지 않습니다.
+인증에 성공한 값을 찾지 못하거나 다른 설정이 충돌하는 경우에는 기존 작업을 보존하고 다시 확인하도록 안내합니다.
 명시적으로 비운 소켓 암호, 사용자가 꺼 둔 Bridge, 복구가 필요한 설치 기록도 보존하고 원인을 표시합니다.
 
 ---
