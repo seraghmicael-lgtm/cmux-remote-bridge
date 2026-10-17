@@ -22,7 +22,7 @@ Tailscale 은 맥과 아이폰을 안전하게 잇는 통로입니다. 이게 �
 
 ## DMG로 설치 (macOS 14 이상)
 
-[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 **CmuxBridge-2.40.23.dmg**를 받습니다.
+[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 **CmuxBridge-2.40.24.dmg**를 받습니다.
 DMG 안의 **Cmux Bridge 설치.app**을 열고 **Bridge 설치**를 누릅니다. Apple Silicon과 Intel을 모두 지원합니다.
 설치 앱에서 cmux·Tailscale 설치 및 연결 상태를 확인하고, 필요한 공식 다운로드나 앱 열기로 이어집니다.
 현재 cmux는 macOS 14 이상이 필요합니다. Tailscale 로그인·VPN 승인과 macOS 권한 승인은 사용자가 진행해야 합니다.
@@ -34,7 +34,7 @@ iPhone·iPad 앱의 컴퓨터 목록에서 **QR로 추가**를 선택해 스캔�
 QR에는 접속 키가 들어 있으므로 본인 기기로만 스캔하고 공유하지 마세요.
 등록과 별개로 cmux 소켓 접근 및 화면 기록·손쉬운 사용 권한은 해당 기능에 필요합니다.
 
-**2.40.23 정식 배포는 Developer ID 서명과 Apple 공증, Gatekeeper 검증을 통과한 파일만 게시합니다.**
+**2.40.24 정식 배포는 Developer ID 서명과 Apple 공증, Gatekeeper 검증을 통과한 파일만 게시합니다.**
 DMG에 공증 티켓을 첨부하며, 설치 후 복사되는 Bridge 실행 파일도 별도로 공증합니다.
 Bridge를 처음 실행할 때 macOS의 온라인 확인이 필요할 수 있습니다.
 새 Mac에서 격리 다운로드 후 설치하는 전체 과정은 아직 검증하지 않았습니다.
@@ -64,7 +64,7 @@ SHA-256, 양쪽 CPU 아키텍처, Developer ID 서명 및 Apple 공증을 검증
 교체 뒤 새 버전이 정상 응답하지 않으면 검증된 이전 파일 복원을 시도합니다.
 복구 상태를 확인할 수 없으면 추가 자동 교체를 중단하고 복구 자료를 보존합니다.
 
-2.40.23의 복구 워치독은 바이너리를 직접 내려받아 교체하지 않습니다.
+2.40.24의 복구 워치독은 바이너리를 직접 내려받아 교체하지 않습니다.
 설치기는 확인된 기존 워치독을 새 방식으로 이관하고, 누락된 script·LaunchAgent 또는
 확인된 부분 설치를 복구합니다. 사용자가 명시적으로 꺼 둔 워치독과 사용자 정의·확인 불가
 설정은 그대로 보존하고 자동 적용을 보류합니다. cmux 인증 실패 시 새 워치독을 시작하지 않습니다.
@@ -232,7 +232,7 @@ tail -f ~/.config/cmux-remote/model-watchdog.log
 기존 셸 설치기는 DMG로 안내하며, DMG 설치 앱은 서명된 배포 바이너리를 검증합니다.
 
 
-Release 2.40.23 makes plain cmux terminals visible in the Mac dashboard, preserves exact-target read-only context access when agent identity is unavailable, and separates session refresh from fan and system polling. It keeps provider and process-generation checks for command submission.
+Release 2.40.24 makes plain cmux terminals visible in the Mac dashboard, preserves exact-target read-only context access when agent identity is unavailable, and separates session refresh from fan and system polling. It keeps provider and process-generation checks for command submission.
 
 The dashboard serves its bundled page through a private WKURLSchemeHandler. Network sources remain blocked by its Content Security Policy; its native navigation policy permits only the first exact local page request. Load failures show a retry instruction instead of remaining white.
 
@@ -251,3 +251,7 @@ The watchdog restores a missing, valid Bridge LaunchAgent registration without s
 Manual update checks bypass the automatic cache; queued manual installs can be retried and do not wait for the quiet timer alone. Actual active connections and unsent drafts still protect replacement. Passive quota reads do not reset automatic idle time. Status-button handlers are restored after temporary menus. Restart uses a detached generation-verified helper, preserving cmux workspaces.
 
 A cached dashboard WebView is explicitly reattached to its popover controller on every reopen. The same view can move between the notch and status item without an empty cached window. Legacy management menus use a native anchored popup independently of the dashboard toggle.
+
+## 2.40.24
+
+cmux 0.65.2의 입력 순번과 확인 응답을 지원합니다. 새 iOS 앱의 명령 입력과 Enter는 같은 터미널 큐에서 순서대로 전달되며, 연결 재시도 시 같은 입력 식별자를 사용합니다. 세션 상태 이벤트와 독립된 조회 소켓으로 관리창 갱신과 목록 조회를 개선했습니다. Mac 전체 화면 스트리밍의 FPS 보장과는 별개입니다.
