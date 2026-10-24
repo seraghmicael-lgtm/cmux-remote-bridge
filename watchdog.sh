@@ -8,6 +8,7 @@
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 CMUX=/Applications/cmux.app/Contents/Resources/bin/cmux
 BRIDGE="$HOME/.config/cmux-remote/CmuxBridge"
+BRIDGE_APP_EXECUTABLE="$HOME/Applications/Cmux Bridge.app/Contents/MacOS/CmuxBridge"
 BRIDGE_TOKEN_FILE="$HOME/.config/cmux-remote/token"
 BRIDGE_AGENT="$HOME/Library/LaunchAgents/io.dk.cmux-bridge.plist"
 # 로그·상태는 /tmp 밖에 둔다: /tmp는 오래된 파일을 자동 삭제해서
@@ -97,8 +98,12 @@ bridge_ok()  {
 bridge_listening() { lsof -iTCP:9393 -sTCP:LISTEN >/dev/null 2>&1; }
 
 ensure_bridge_registration() {
-  local domain="gui/$(id -u)" label="io.dk.cmux-bridge"
-  launchctl print "$domain/$label" >/dev/null 2>&1 && return 0
+  local domain="gui/$(id -u)" label="io.dk.cmux-bridge" configured loaded
+  configured=$(plutil -extract ProgramArguments.0 raw -o - "$BRIDGE_AGENT" 2>/dev/null) || return 1
+  case "$configured" in
+    "$HOME/.config/cmux-remote/CmuxBridge"|"$BRIDGE_APP_EXECUTABLE") BRIDGE="$configured" ;;
+    *) log "브리지 실행 경로가 관리 대상과 다름 — 설치 복구 필요"; return 1 ;;
+  esac
   # Respect an explicit disabled service and never replace it with a terminal job.
   if launchctl print-disabled "$domain" 2>/dev/null | grep -q '"io.dk.cmux-bridge" => true'; then
     log "브리지 자동 실행이 비활성화되어 있음"
@@ -109,7 +114,14 @@ ensure_bridge_registration() {
     && plutil -lint -s "$BRIDGE_AGENT" >/dev/null 2>&1 \
     && [ "$(plutil -extract Label raw -o - "$BRIDGE_AGENT" 2>/dev/null)" = "$label" ] \
     && [ "$(plutil -extract ProgramArguments.0 raw -o - "$BRIDGE_AGENT" 2>/dev/null)" = "$BRIDGE" ] \
+    && ! plutil -extract Program raw -o - "$BRIDGE_AGENT" >/dev/null 2>&1 \
+    && ! plutil -extract ProgramArguments.1 raw -o - "$BRIDGE_AGENT" >/dev/null 2>&1 \
     || { log "브리지 로그인 서비스 파일을 확인하지 못함 — 설치 복구 필요"; return 1; }
+  if loaded=$(launchctl print "$domain/$label" 2>/dev/null); then
+    [ "$(printf '%s\n' "$loaded" | sed -n 's/^[[:space:]]*program = //p')" = "$BRIDGE" ] \
+      || { log "등록된 브리지 실행 경로가 변경됨 — 서비스 보존"; return 1; }
+    return 0
+  fi
   launchctl bootstrap "$domain" "$BRIDGE_AGENT" >/dev/null 2>&1 || true
   # A launchctl error can still register a service. Verify before starting it.
   launchctl print "$domain/$label" >/dev/null 2>&1 \
@@ -126,8 +138,9 @@ ensure_bridge() {
   # 포트를 쥔 프로세스를 먼저 정리한 뒤 재기동한다.
   if bridge_listening; then
     log "브리지 무응답(좀비 LISTEN) — 포트 점유 프로세스 정리"
-    pkill -f "cmux-remote/CmuxBridge" 2>/dev/null; sleep 2
-    pkill -9 -f "cmux-remote/CmuxBridge" 2>/dev/null; sleep 1
+    # Only the validated launchd job is ours. A process name can match a different app.
+    launchctl kill SIGTERM "gui/$(id -u)/io.dk.cmux-bridge" 2>/dev/null || true
+    sleep 2
   fi
   log "브리지 재기동"
   # 브리지는 launchd(io.dk.cmux-bridge)가 소유한다. 워크스페이스에서 또 띄우면

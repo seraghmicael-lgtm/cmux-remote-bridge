@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "version": "2.40.26",
+  "archive": "CmuxBridge.app.zip",
+  "sha256": "acfa379ea596e36ab2db99e6400376c01bd296b596c400051083750e70132500",
+  "bytes": 3320190,
+  "bundleIdentifier": "io.dk.cmux-bridge",
+  "teamIdentifier": "HQ94KCSV26"
+}

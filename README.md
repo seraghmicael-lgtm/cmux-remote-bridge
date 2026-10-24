@@ -16,64 +16,47 @@
 | macOS | Apple Silicon·Intel 모두 됩니다 |
 
 Tailscale 은 맥과 아이폰을 안전하게 잇는 통로입니다. 이게 있어야 밖에서도 집의 맥에 닿습니다.
-연결 상태는 설치 앱에서 확인하며, 설치 전에 두 기기에서 실행해 주세요.
+없으면 설치 명령이 알아서 안내해 줍니다.
 
 ---
 
-## DMG로 설치 (macOS 14 이상)
+## DMG로 설치 (새 설치 macOS 14 이상)
 
-[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 **CmuxBridge-2.40.24-r2.dmg**를 받습니다.
-DMG 안의 **Cmux Bridge 설치.app**을 열고 **Bridge 설치**를 누릅니다. Apple Silicon과 Intel을 모두 지원합니다.
-설치 앱에서 cmux·Tailscale 설치 및 연결 상태를 확인하고, 필요한 공식 다운로드나 앱 열기로 이어집니다.
-현재 cmux는 macOS 14 이상이 필요합니다. Tailscale 로그인·VPN 승인과 macOS 권한 승인은 사용자가 진행해야 합니다.
-Bridge 설치와 자동 업데이트에는 Homebrew·Python·Xcode 명령줄 도구가 필요하지 않습니다. 기존 연결 토큰은 보존합니다.
+[KLCB 다운로드](https://klcb.co.kr/downloads/cmux-bridge.dmg)에서 최신 설치 파일을 받습니다.
+DMG 안의 **Cmux Bridge 설치.app**을 열고 **설정 시작**을 누릅니다. Apple Silicon과 Intel을 모두 지원합니다.
+같은 버튼이 cmux·Tailscale 준비, Bridge 앱 설치, 화면·오디오·원격 입력 권한을 순서대로 안내합니다. 기존 연결 토큰은 보존합니다.
 
-설치 완료 화면에서 QR을 바로 스캔하고 화면 기록·손쉬운 사용 권한을 설정할 수 있습니다.
-나중에는 Mac 관리창에서 **관리 접기 오른쪽의 QR 연결**을 누릅니다.
-iPhone·iPad 앱의 컴퓨터 목록에서 **QR로 추가**를 선택해 스캔하면 이 Mac을 저장할 수 있습니다.
-QR에는 접속 키가 들어 있으므로 본인 기기로만 스캔하고 공유하지 마세요.
-등록과 별개로 cmux 소켓 접근 및 화면 기록·손쉬운 사용 권한은 해당 기능에 필요합니다.
+정식 배포는 Developer ID 서명과 Apple 공증, Gatekeeper 검증을 통과한 파일만 게시합니다.
+실행 앱은 **~/Applications/Cmux Bridge.app**입니다. 화면 및 시스템 오디오 녹음·손쉬운 사용에서 이 앱을 허용합니다. 운영체제 승인은 Mac에서 직접 진행합니다.
 
-**2.40.24 정식 배포는 Developer ID 서명과 Apple 공증, Gatekeeper 검증을 통과한 파일만 게시합니다.**
-DMG에 공증 티켓을 첨부하며, 설치 후 복사되는 Bridge 실행 파일도 별도로 공증합니다.
-Bridge를 처음 실행할 때 macOS의 온라인 확인이 필요할 수 있습니다.
-새 Mac에서 격리 다운로드 후 설치하는 전체 과정은 아직 검증하지 않았습니다.
+## 터미널로 설치 (맥에서 한 번)
 
-## 기존 터미널 설치 명령
-
-이전 `install.sh`와 `install.command`는 설정을 직접 바꾸지 않고 DMG 설치 안내만 표시합니다.
-위 DMG의 **Bridge 설치** 버튼을 사용해 주세요. 설치기는 기존 cmux 소켓 암호를 재사용하고,
-cmux 인증과 연결을 실제로 확인한 뒤 Bridge와 복구 워치독을 등록합니다.
-안전하게 병합할 수 있는 중복 `automation` 항목은 정리하며, 수정 전 원본 설정을
-같은 폴더의 고유 `.cmux-bridge-backup-*.bak` 파일에 사용자 전용 권한으로 보존합니다.
-설치기 r2는 오래된 Bridge 암호 사본과 셸 환경의 차이를 실제 cmux 소켓 인증으로 확인해 자동 동기화합니다.
-새 설치에 암호가 없으면 Mac마다 독립적인 키를 생성합니다. 기존 cmux 암호는 덮어쓰지 않습니다.
-인증에 성공한 값을 찾지 못하거나 다른 설정이 충돌하는 경우에는 기존 작업을 보존하고 다시 확인하도록 안내합니다.
-명시적으로 비운 소켓 암호, 사용자가 꺼 둔 Bridge, 복구가 필요한 설치 기록도 보존하고 원인을 표시합니다.
+기존 셸 설치 명령은 설정을 바꾸지 않고 공식 DMG 설치 앱으로 안내합니다. 설치 완료 후 표시된 **QR 코드**를 iPhone·iPad 앱에서 읽으면 이 Mac을 등록할 수 있습니다. Mac과 모바일 기기는 같은 Tailscale 네트워크에 연결해 주세요.
 
 ---
 
 ## 업데이트
 
-관리창에서 **관리 접기 오른쪽의 업데이트 확인** 버튼으로 공식 안정 버전을 확인합니다.
-자동 확인 주기는 **6시간**이며, 확인 실패 시 **15분** 뒤 다시 확인합니다.
-수동 확인은 60초마다 한 번 가능합니다. 자동 업데이트를 꺼 둔 경우 확인만 하고 적용하지 않습니다.
+**자동입니다.** 하루에 한 번 새 버전이 있는지 확인하고, 있으면 알아서 받아 교체합니다.
+받은 파일이 정상 실행 파일인지 확인한 뒤에 바꾸고, 새 버전이 안 뜨면 이전 것으로 되돌립니다.
 
-업데이트는 활성 원격 연결이 없고 마지막 외부 활동 후 **60초**가 지난 뒤에만 적용합니다.
-미전송 초안이나 진행 중인 관리 작업도 적용을 보류합니다. 후보 파일은 공식 릴리스의 고정 커밋,
-SHA-256, 양쪽 CPU 아키텍처, Developer ID 서명 및 Apple 공증을 검증합니다.
-교체 뒤 새 버전이 정상 응답하지 않으면 검증된 이전 파일 복원을 시도합니다.
-복구 상태를 확인할 수 없으면 추가 자동 교체를 중단하고 복구 자료를 보존합니다.
+새 설치·업데이트 스크립트는 배포 서명(고정 식별자와 개발 팀)을 검증하고 원본 서명을
+그대로 보존합니다. 서명이 없거나 검증에 실패하면 기존 파일을 유지합니다.
+기존 복구 워치독의 업데이트 검증도 적용하려면 `watchdog.sh` 자체를 갱신해야 합니다.
+브리지 바이너리 자동 업데이트만으로 과거 워치독 스크립트까지 바뀌지는 않습니다.
 
-2.40.24의 복구 워치독은 바이너리를 직접 내려받아 교체하지 않습니다.
-설치기는 확인된 기존 워치독을 새 방식으로 이관하고, 누락된 script·LaunchAgent 또는
-확인된 부분 설치를 복구합니다. 사용자가 명시적으로 꺼 둔 워치독과 사용자 정의·확인 불가
-설정은 그대로 보존하고 자동 적용을 보류합니다. cmux 인증 실패 시 새 워치독을 시작하지 않습니다.
-브리지 파일만 바꾸면 오래된 워치독 이관이 완료되지 않을 수 있습니다.
+정식 배포에는 **Developer ID Application 서명**을 사용합니다. 이전 서명에서 전환할 때는
+macOS가 화면 기록·손쉬운 사용 권한을 다시 요구할 수 있습니다.
+권한은 사용자가 시스템 설정에서 허용해야 합니다.
+기존 standalone 설치는 정식 앱으로 이관하면서 LaunchAgent 실행 경로만 앱 내부로 전환합니다. 앱 전체를 교체하고 실패하면 이전 앱과 서비스 설정으로 복구합니다.
 
-자동 적용을 끄려면 Bridge 실행 환경의 `CMUX_AUTO_UPDATE=0`을 사용합니다.
-기존 실행 경로·연결 토큰·LaunchAgent와 cmux 세션을 보존합니다.
-화면 기록·손쉬운 사용 권한이 필요한 경우 macOS 설정에서 직접 허용해야 합니다.
+끄고 싶으면 워치독 환경변수에 `CMUX_AUTO_UPDATE=0` 을 주세요.
+지금 버전은 맥에서 이렇게 확인합니다:
+
+```bash
+curl -s -H "Authorization: Bearer $(cat ~/.config/cmux-remote/token)" \
+  http://127.0.0.1:9393/version
+```
 
 ---
 
@@ -124,7 +107,7 @@ SHA-256, 양쪽 CPU 아키텍처, Developer ID 서명 및 Apple 공증을 검증
    curl -s http://127.0.0.1:9393/ping
    ```
    `unauthorized` 가 나오면 **정상입니다**(인증 뒤에 있는 응답이라 그렇습니다).
-3. 그래도 안 되면 DMG 설치 앱을 다시 실행하세요. 기존 키와 설정을 우선 보존합니다.
+3. 그래도 안 되면 설치 명령을 다시 실행하세요. 설정은 유지됩니다.
 
 **뚜껑을 닫으면 끊긴다** → 메뉴 막대의 C 아이콘이 초록인지 확인하세요. 회색이면 **상시전원 → 켜기**를 선택합니다.
 
@@ -133,7 +116,7 @@ SHA-256, 양쪽 CPU 아키텍처, Developer ID 서명 및 Apple 공증을 검증
 
 ```bash
 tail -f ~/.config/cmux-remote/bridge.log      # 브리지
-tail -f ~/.config/cmux-remote/watchdog.log    # 자동 복구
+tail -f ~/.config/cmux-remote/watchdog.log    # 자동 복구·자동 업데이트
 ```
 
 ---
@@ -230,29 +213,4 @@ tail -f ~/.config/cmux-remote/model-watchdog.log
 `installer/release-bridge.sh`를 실행합니다. 누락하거나 `-`를 지정하면 빌드 전에 중단합니다.
 서명 후 모든 아키텍처에서 `io.dk.cmux-bridge` 식별자와 프로젝트 개발 팀을 다시 검증합니다.
 `--dry-run`은 게시만 생략하며, 빌드와 서명 검증은 동일합니다.
-기존 셸 설치기는 DMG로 안내하며, DMG 설치 앱은 서명된 배포 바이너리를 검증합니다.
-
-
-Release 2.40.24 makes plain cmux terminals visible in the Mac dashboard, preserves exact-target read-only context access when agent identity is unavailable, and separates session refresh from fan and system polling. It keeps provider and process-generation checks for command submission.
-
-The dashboard serves its bundled page through a private WKURLSchemeHandler. Network sources remain blocked by its Content Security Policy; its native navigation policy permits only the first exact local page request. Load failures show a retry instruction instead of remaining white.
-
-새 Mac에서 연결이 끊긴 소켓 파일이 남아 있어도 정상 cmux 연결을 찾아 세션 목록과 내용을 표시합니다. 명시적으로 지정한 소켓은 다른 대상으로 바꾸지 않습니다.
-
-## 계정 관리
-노치 오른쪽 계정 버튼에서 Claude·Codex 계정을 추가할 수 있습니다. 공식 CLI 로그인 후 등록 확인을 누르세요. 세션 위의 계정별 목록과 로고, 5시간·주간 사용률 게이지를 제공합니다. 계정 전환은 새 세션에 적용되며 실행 중인 세션은 유지합니다. 없는 한도 값은 확인 불가로 표시합니다. 인증정보는 업체 CLI의 저장소에서 관리합니다.
-
-## 승인 자동 확인
-계정은 바로 목록에 추가됩니다. Claude·Codex 브라우저 승인을 5초 간격으로 자동 확인하며, 관리 창을 닫아도 10분 동안 계속합니다. 코드가 표시된 경우에만 공식 CLI 로그인 창에 입력하세요. 5시간·주간 한도가 100% 이상이면 로그인과 한도가 확인된 같은 업체의 다른 계정으로 자동 선택합니다. 전환은 새 Bridge 세션에 적용됩니다. 모든 계정에 목록 삭제가 제공됩니다.
-
-## Startup and usage recovery
-
-The watchdog restores a missing, valid Bridge LaunchAgent registration without sending commands to an existing terminal. Explicitly disabled services remain disabled. Newly approved accounts receive their first quota read on the next 5-second poll, including inactive accounts. Missing provider windows are labeled separately from loading and authentication failures. Dashboard name lookup does not wait for network DNS.
-
-Manual update checks bypass the automatic cache; queued manual installs can be retried and do not wait for the quiet timer alone. Actual active connections and unsent drafts still protect replacement. Passive quota reads do not reset automatic idle time. Status-button handlers are restored after temporary menus. Restart uses a detached generation-verified helper, preserving cmux workspaces.
-
-A cached dashboard WebView is explicitly reattached to its popover controller on every reopen. The same view can move between the notch and status item without an empty cached window. Legacy management menus use a native anchored popup independently of the dashboard toggle.
-
-## 2.40.24
-
-cmux 0.65.2의 입력 순번과 확인 응답을 지원합니다. 새 iOS 앱의 명령 입력과 Enter는 같은 터미널 큐에서 순서대로 전달되며, 연결 재시도 시 같은 입력 식별자를 사용합니다. 세션 상태 이벤트와 독립된 조회 소켓으로 관리창 갱신과 목록 조회를 개선했습니다. Mac 전체 화면 스트리밍의 FPS 보장과는 별개입니다.
+`install.command`는 서명된 배포 바이너리만 설치하며 서명 없는 소스 빌드로 대체하지 않습니다.
